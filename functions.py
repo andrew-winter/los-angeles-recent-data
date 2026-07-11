@@ -1,16 +1,23 @@
 import os
+import logging
 import requests
-import pandas as pd
+import mysql.connector
+
+logger = logging.getLogger(__name__)
 
 # %%
 # Constants
-app_token = os.environ.get("LA_RECENT_DATA_TOKEN")
-headers = {"X-App-Token": app_token}
+ID_311_CASES_2026 = "2cy6-i7zn"
+APP_TOKEN = os.environ.get("LA_RECENT_DATA_TOKEN")
 
-# Data sources: data.lacity.org
-id_ramp_bids = "hf3r-utnq"
-id_parking_meters = "e7h6-4a3e"
-id_311_cases = "2cy6-i7zn"
+# Application token and MySQL configuration
+headers = {"X-App-Token": APP_TOKEN}
+mysql_config = {
+    "user": "admin",
+    "password": os.environ.get("MYSQL_ADMIN_PASSWORD"),
+    "host": "127.0.0.1",
+    "port": 3306
+}
 
 # %%
 # Function make_endpoint()
@@ -53,38 +60,31 @@ def query_endpoint(
     # Pages, explicitly-requested columns only, shorter timeout
     request_body["page"] = {"pageNumber": page, "pageSize": limit}
     request_body["includeSynthetic"] = False
-    request_body["timeout"] = 45
+    request_body["timeout"] = 30
     
+    logger.info("Starting POST request")
     response = requests.post(url, json=request_body, headers=headers)
     return response
 
 # %%
 # Function check_response()
-def check_response(response):
-    """Check response for status code and structure. Decode into JSON.
+def check_response(raw_response):
+    """Check response status code. Decode JSON.
     
     ...
     """
-    print(f"Status code:\t\t{response.status_code}")
-    print(f"Status code ok:\t\t{response.ok}")
-    response_json = response.json()
-    print(f"Rows:\t\t\t{len(response_json)}")
-    # Check if the same number of "columns" are in each "row"
-    check_columns = set([len(row) for row in response_json])
-    print(f"Columns:\t\t{check_columns}")
-    return response_json
+    logger.info("Response status code: %d", raw_response.status_code)
+    if raw_response.ok:
+        try:
+            output = raw_response.json()
+        except requests.exceptions.JSONDecodeError as err:
+            logger.info("JSON Decode Error: %s", err)
+            output = None
+        return output
 
 # %%
-# RAMP open bids example
 if __name__ == "__main__":
-    endpoint = make_endpoint(id=id_311_cases, query=True)
+    endpoint = make_endpoint(id=ID_311_CASES_2026)
     soql_query = "SELECT systemmodstamp AS updateddate, casenumber, createddate"
     response = query_endpoint(url=endpoint, query=soql_query, page=1, limit=25)
-    response_json = check_response(response)
-    df = pd.DataFrame(response_json)
-
-# %%
-
-
-# %%
-
+    output = check_response(response)
